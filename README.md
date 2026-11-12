@@ -1,122 +1,115 @@
 # AirPlayTray
 
-**Experimental public preview / 实验性公开预览版。** Not affiliated with Apple / 非 Apple 官方项目。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-**Stream Windows system audio to HomePod / AirPlay 2 speakers in real time, with a lightweight system tray controller.**  
-**将 Windows 整机系统声音实时推流至 HomePod / AirPlay 2 音箱的轻量级托盘工具。**
+[![Tests](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml)
 
-> [!NOTE]
-> HomePod firmware updates have caused compatibility issues with legacy AirPlay 1 streaming tools such as TuneBlade, resulting in connection failures or an inability to play audio. AirPlayTray uses **AirPlay 2** via `pyatv` and Windows WASAPI loopback for system-audio streaming, automatic idle release, and reconnection. The default requested receiver latency is `0.3s`; actual end-to-end latency depends on the device and network.  
-> HomePod 升级新固件后，TuneBlade 等老牌 AirPlay 1 推流工具出现了连接失败、无法播放等兼容性问题。本项目改用基于 `pyatv` 的 **AirPlay 2** 实时通道与 Windows WASAPI 环回抓音，提供系统声音推流、静音自动释放与断线重连。默认向接收端请求 `0.3` 秒延迟；实际端到端延迟取决于设备和网络。
+Stream audio from the Windows default playback device to HomePod / AirPlay 2 speakers, with a lightweight system tray controller.
 
-### Highlights / 核心特性
-- **Real-time WASAPI Loopback / 整机实时抓音**：Captures default Windows playback audio without virtual audio cables / 无需虚拟声卡，直接捕获默认播放设备声音。
-- **System Tray Control / 任务栏托盘控制**：One-click start/stop, log viewer with auto-rotation, and hidden background mode / 右键一键启停、自动轮转日志、无黑窗后台运行。
-- **Smart Idle Release / 静音自动待机**：Releases the speaker after 60s of silence (so Siri & phone casting still work) and reconnects when audio resumes; discovery and handshaking take time / 安静 60 秒自动释放音箱，检测到声音后重新连接；发现与握手需要时间，声音开头可能漏掉。
-- **Resilient Reconnect / 稳健重连**：Retries discovery if the speaker is offline at startup and recovers from network drops / 启动离线自动重试、断流自动重连。
-- **Privacy-First Local Config / 本地配置**：Select speakers by `device_name` or `device_id` via gitignored `config.json` / 通过不入库的本地 `config.json` 指定目标音箱。
+**Experimental public preview. Not affiliated with Apple.**
 
-## 功能
+HomePod firmware updates have caused compatibility issues with legacy AirPlay 1 streaming tools such as TuneBlade, including connection failures and an inability to play audio. AirPlayTray uses pyatv's AirPlay 2 audio channel and Windows WASAPI loopback capture. The default requested receiver latency is 0.3 seconds; actual end-to-end latency depends on the device and network.
 
-- 通过 WASAPI 环回采集默认播放设备的声音。
-- 使用 pyatv 的 AirPlay 2 通道发送音频。
-- 托盘菜单可开始、停止推流和查看日志。
-- 默认安静 60 秒后释放音箱，检测到声音后重新连接。
-- 启动时音箱未上线会继续重试；等待期间可以停止。
-- 支持按音箱名称或设备标识选择目标，没有内置私人设备。
+## Highlights
 
-## 安装与第一次使用
+- **System audio capture:** capture the default Windows playback device without virtual audio cables.
+- **Tray controls:** start and stop streaming, view automatically rotated logs, and run without a console window.
+- **Idle release:** release the speaker after 60 seconds of silence and reconnect when audio resumes. Discovery and handshaking take time, so the start of audio may be missed.
+- **Automatic retry:** retry when the speaker is offline at startup or streaming disconnects; waiting can be stopped.
+- **Local configuration:** select a speaker by name or identifier without committing private settings.
 
-需要 Windows、64 位 Python 3.9–3.12，以及可在同一局域网发现的 AirPlay 音箱。安装脚本接受上述 Python 版本；当前安装及自动化测试验证的版本为 Python 3.9.13，其他版本尚未验证。
+## Installation and first use
 
-1. 下载源码并解压到一个固定、可写的文件夹。
-2. 确认终端中的 `python --version` 指向受支持的 Python，然后双击 `install.cmd`。安装需要联网下载依赖，文件放在项目自己的 `.venv` 中。
-3. 双击 `devices.cmd` 查看设备名称和标识。
-4. 用文本编辑器打开安装时生成的 `config.json`，把示例名称改成自己的音箱。
-5. 先双击 `start.cmd`，确认窗口中的连接结果和实际声音正常。
-6. 停止窗口版后，可双击 `background.vbs` 在后台运行。右下角的喇叭图标可能位于隐藏图标区域。
+You need Windows, 64-bit Python 3.9–3.12, and an AirPlay speaker discoverable on the same local network. The installer accepts these Python versions. Local installation was verified with Python 3.9.13. GitHub Actions runs Windows tests on Python 3.9 and 3.12; see the badge above for current results. Automated tests do not establish hardware playback compatibility.
 
-如果系统只提供 Python Launcher，可以在项目目录运行 `py -3.12 setup_env.py`，其中版本号替换为自己安装的受支持版本。项目不依赖开发者电脑的 Python 路径；更换项目位置或基础 Python 后，应重新创建 `.venv`。
+1. Download the source and extract it to a fixed, writable directory. Release attachments contain source code and require Python and dependencies.
+2. Check that `python --version` selects a supported Python, then double-click `install.cmd`. Installation downloads dependencies into the project's own `.venv` directory.
+3. Run `devices.cmd` to list speaker names and identifiers.
+4. Open the generated `config.json` in a text editor and replace the example name with your speaker's name.
+5. Run `start.cmd` first and check both the connection messages and actual sound.
+6. Stop the console instance before running `background.vbs` for tray mode. The speaker icon may be in the notification area's hidden icons.
 
-设备配置示例：
+If your system only provides the Python Launcher, run `py -3.12 setup_env.py` in the project directory, replacing the version with an installed supported version. The project does not depend on the developer's Python path. Recreate `.venv` after moving the project or replacing the base Python installation.
+
+Example device configuration:
 
 ```json
 {
-  "device_name": "客厅音箱",
+  "device_name": "Living Room Speaker",
   "device_id": null
 }
 ```
 
-名称按不区分大小写的子串匹配。存在同名或相似名称时，建议填写 `device_id` 并将 `device_name` 设为 `null`。设备标识取自 `devices.cmd` 的输出，不需要提交到仓库。
+Names use a case-insensitive substring match. If several speakers have similar names, set `device_id` from the output of `devices.cmd` and set `device_name` to `null`. Keep these settings local.
 
-命令行指定目标会覆盖配置文件中的目标；同时指定 `--id` 和 `--name` 时，标识优先。`--list` 不要求存在设备配置。
+A command-line target overrides the target in the configuration file. If both `--id` and `--name` are supplied, the identifier takes precedence. `--list` does not require a configuration file.
 
 ```powershell
-.\.venv\Scripts\python.exe airplay_system_audio.py --name "客厅音箱"
+.\.venv\Scripts\python.exe airplay_system_audio.py --name "Living Room Speaker"
 .\.venv\Scripts\python.exe airplay_system_audio.py --list
 .\.venv\Scripts\python.exe tray_app.py --config "config.json"
 ```
 
-## 日常控制
+## Everyday controls
 
-托盘右键菜单提供“停止推流 / 开始推流”“查看日志”和“退出”。蓝色表示后台任务仍在运行，包括连接、等待音箱或静音待机；它不表示音箱已经实际播放声音。
+The tray menu offers start/stop streaming, view logs, and quit. The current menu labels are Chinese: `开始推流` / `停止推流`, `查看日志`, and `退出`. A blue icon means the background task is alive, including connection attempts, waiting for a speaker, and idle monitoring. It does not confirm audible playback.
 
-`stop.cmd` 会强制停止从当前项目完整脚本路径启动的 Python 进程，适合托盘无法退出时使用。它会先核对进程的命令行路径，不使用可能过期的 PID 直接结束进程。无法查询或停止进程时会报告失败。
+Use `stop.cmd` if the tray application cannot quit. It force-stops Python processes whose command lines contain the complete script paths of this project. It verifies paths instead of terminating an arbitrary process from a stale PID file. It reports failures to inspect or stop processes.
 
-可选开机自启：先确认后台运行正常，再在项目目录运行：
+To enable optional startup at login, first verify tray mode, then run this in the project directory:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\enable-startup.ps1
 ```
 
-它只会创建 `AirPlayTray-Public.lnk`。取消时运行 `shell:startup` 并删除该快捷方式。移动项目后需要重新设置。
+This creates `AirPlayTray-Public.lnk`. To disable it, open `shell:startup` and delete that shortcut. Set it up again after moving the project.
 
-## 常用参数
+## Common options
 
-| 参数 | 默认值 | 说明 |
+| Option | Default | Meaning |
 | --- | --- | --- |
-| `--name` / `--id` | 从本机配置读取 | 目标音箱 |
-| `--config` | 项目目录的 `config.json` | 设备配置路径 |
-| `--latency` | `0.3` | 向接收端请求的延迟秒数，程序下限 `0.25`；不等于实测端到端延迟 |
-| `--prebuffer` | `0.12` | 本机音源预缓冲秒数 |
-| `--volume` | 接收端初始值或回退值 | 推流音量百分比 |
-| `--idle-timeout` | `60` | 安静后释放音箱的秒数；`0` 为不释放 |
-| `--silence-threshold` | `-55` | 判断声音活动的 dBFS 门限 |
-| `--retry-delay` | `3` | 重试间隔秒数 |
-| `--max-retries` | `0` | 允许的重试次数；`0` 为不限 |
-| `--engine` | `direct` | `pipe` 为实验性的文件流通道 |
-| `--report` | 窗口版 `60`，托盘版 `0` | 状态输出间隔；`0` 为关闭 |
-| `--seconds` | `0` | 限制单次推流会话时长；静音待机可能让实际运行提前结束 |
-| `--debug` | 关闭 | 窗口版协议日志 |
-| `--dump` | 关闭 | 记录采集音频为 WAV |
+| `--name` / `--id` | Local configuration | Target speaker |
+| `--config` | `config.json` in the project directory | Device configuration path |
+| `--latency` | `0.3` | Requested receiver latency in seconds, clamped to at least `0.25`; not measured end-to-end latency |
+| `--prebuffer` | `0.12` | Local audio prebuffer in seconds |
+| `--volume` | Receiver initial value or fallback | Streaming volume percentage |
+| `--idle-timeout` | `60` | Silence duration before releasing the speaker; `0` disables release |
+| `--silence-threshold` | `-55` | Audio activity threshold in dBFS |
+| `--retry-delay` | `3` | Seconds between retries |
+| `--max-retries` | `0` | Allowed retry count; `0` means unlimited |
+| `--engine` | `direct` | `pipe` is an experimental file-stream channel |
+| `--report` | Console: `60`; tray: `0` | Status output interval in seconds; `0` disables it |
+| `--seconds` | `0` | Limit an individual streaming session; idle release may end it earlier |
+| `--debug` | Off | Protocol logging in console mode |
+| `--dump` | Off | Record captured audio to WAV |
 
-所有参数可通过 `airplay_system_audio.py --help` 查看。`--selftest` 和 `--selftest-live` 会在真实音箱上播放测试音，运行前应结束其他推流。托盘入口主要用于日常控制，诊断参数应通过窗口版使用。
+Use `airplay_system_audio.py --help` for all options. Application messages and command-line help currently remain in Chinese. `--selftest` and `--selftest-live` play test tones on the real speaker; stop other streaming sessions first. Use console mode for diagnostics and tray mode for everyday control.
 
-## 排查与限制
+## Troubleshooting and limitations
 
-- 找不到设备：确认音箱上线，网络允许设备发现，再运行 `devices.cmd`。带密码或需要持久配对的接收端不在当前验证范围。
-- 卡顿：可以尝试 `start.cmd --latency 0.6 --prebuffer 0.3`，并检查网络信号。
-- 切换 Windows 默认输出、拔插声卡、睡眠唤醒后的恢复仍需更多真机测试；必要时手动停止并重新开始。
-- 重新连接需要发现和握手，短促的通知声或声音开头可能被漏掉。
-- 仅验证过原型使用的 HomePod mini 场景，无法保证其他接收端或固件版本兼容。
-- 项目修改了 pyatv 的内部接口和部分延迟处理，因此固定 `pyatv==0.18.0`。升级依赖前需要重新验证。
-- `pipe` 通道不支持全部 `direct` 参数，例如自定义音量和静音门限；它只供实验排查。
-- 建议只运行一套推流。不同目录或其他发送端同时连接音箱可能相互抢占。
-- `diagnose.cmd` 会记录系统声音到 `diagnostic.wav`；诊断前结束托盘推流并关闭私人音频。WAV、日志、本机配置和进程文件均已加入忽略清单。
-- 协议日志可能含设备地址和配对信息，提交问题前请检查并脱敏。
+- **Speaker not found:** check power, local-network discovery, and `devices.cmd`. Password-protected receivers and receivers requiring persistent pairing are outside the current validation scope.
+- **Dropouts:** try `start.cmd --latency 0.6 --prebuffer 0.3` and check wireless signal quality.
+- Recovery after changing the default Windows output, unplugging an audio device, or waking from sleep needs more hardware testing. Stop and restart streaming manually if necessary.
+- Discovery and handshaking can miss short notification sounds or the beginning of resumed audio.
+- The original prototype was used with a HomePod mini. Other receiver models and firmware versions are not guaranteed to work.
+- The project patches pyatv internals and latency handling, so `pyatv==0.18.0` is pinned. Revalidate before upgrading dependencies.
+- The experimental `pipe` channel does not implement every `direct` option, including custom volume and silence thresholds.
+- Run one sender at a time. Other copies or applications can compete for the same speaker.
+- `diagnose.cmd` records system audio to `diagnostic.wav`. Stop tray streaming and close private audio first. WAV files, logs, local configuration, and process files are ignored by Git.
+- Protocol logs may include device addresses and pairing information. Review and redact them before filing an issue.
 
-公开版保留依赖库默认的音频加密计数器处理，移除了原型中的固定零值 nonce 调试方案。
+The public version keeps the dependency's standard audio-encryption counter behavior. The prototype's fixed-zero nonce diagnostic option has been removed.
 
-## 测试
+## Tests
 
-在项目目录运行：
+Run this from the project directory:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 ```
 
-测试直接验证音源、参数和配置逻辑；设备发现与停止进程等外部操作使用隔离样本，不会播放声音或结束真实进程。测试通过不代表所有音箱和固件已完成兼容性验证。
+The 20 regression tests exercise the real audio-source, argument, and configuration logic. External device discovery and process termination use isolated samples; the tests neither play audio nor terminate real processes. GitHub Actions runs Windows tests and checks pinned dependencies on pushes, pull requests, and manual dispatch. Passing tests do not guarantee compatibility with every speaker or firmware version.
 
-## 依赖与许可证
+## Dependencies and license
 
-`requirements.txt` 列出直接依赖；`requirements-lock.txt` 固定完整安装依赖。安装脚本使用后者。源码以 MIT 许可证提供，第三方库遵循各自许可证，详见 [LICENSE](LICENSE) 和 [THIRD_PARTY.md](THIRD_PARTY.md)。源码包不捆绑 Python 或第三方运行环境。
+`requirements.txt` lists direct dependencies; `requirements-lock.txt` pins the complete installation set used by the installer. This project's source uses the MIT license. Third-party libraries retain their own licenses; see [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md). The source archive does not bundle Python or a third-party runtime.

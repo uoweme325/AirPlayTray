@@ -1,0 +1,16 @@
+.venv/
+runtime/
+__pycache__/
+*.py[cod]
+config.json
+config.*.local.json
+*.log
+*.pid
+*.lock
+*.wav
+.pytest_cache/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+AirPlayTray-GitHub发布指南.md

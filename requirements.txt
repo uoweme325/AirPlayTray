@@ -1,0 +1,5 @@
+numpy==2.0.2
+SoundCard==0.4.6
+pyatv==0.18.0
+pystray==0.19.5
+Pillow==11.3.0

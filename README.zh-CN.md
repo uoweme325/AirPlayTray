@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml)
 
-将 Windows 默认播放设备的系统声音实时推送到 HomePod / AirPlay 2 音箱的托盘工具。
+替代在 HomePod OS 27 上失效的 TuneBlade，将 Windows 默认播放设备的系统声音实时推送到 HomePod / AirPlay 2 音箱的托盘工具。
 
 **实验性公开预览版，非 Apple 官方项目。**
 

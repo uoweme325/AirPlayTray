@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml)
 
-Stream audio from the Windows default playback device to HomePod / AirPlay 2 speakers, with a lightweight system tray controller.
+An alternative to TuneBlade when it stops working on HomePod OS 27. Stream audio from the Windows default playback device to HomePod / AirPlay 2 speakers, with a lightweight system tray controller.
 
 **Experimental public preview. Not affiliated with Apple.**
 

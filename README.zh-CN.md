@@ -13,21 +13,28 @@ HomePod 升级新固件后，TuneBlade 等老牌 AirPlay 1 推流工具出现了
 ## 核心特性
 
 - **系统声音采集**：采集 Windows 默认播放设备的声音，无需虚拟声卡。
-- **托盘控制**：开始、停止推流、查看自动轮转日志，以及无窗口后台运行。
+- **托盘选箱与双语菜单**：右键菜单根据 Windows 显示语言自动使用简体中文或英文，支持在「选择音箱 / Select Speaker」子菜单中切换设备或重新扫描，并保留自动裁剪日志。
+- **真实状态驱动的三色托盘图标**：停用或异常为灰色，连接与重连时青色闪烁，静音待机为常亮青色，仅在真正发送音频包后才变为常亮蓝色。
+- **零配置首次启动**：无需预先手动编辑 `config.json`；仅在没有旧配置且局域网只发现一台明确标识的 HomePod 时自动选定并保存。
 - **静音待机**：默认安静 60 秒后释放音箱，检测到声音后重新连接；发现和握手需要时间，声音开头可能漏掉。
 - **自动重试**：启动时音箱未上线会继续重试，断流后尝试重连；等待期间可以停止。
-- **本机配置**：按音箱名称或设备标识选择目标，私人配置不提交到仓库。
 
 ## 安装与第一次使用
 
-需要 Windows、64 位 Python 3.9–3.12，以及可在同一局域网发现的 AirPlay 音箱。安装脚本接受上述 Python 版本。本机安装验证使用 Python 3.9.13；GitHub Actions 的 Windows 自动测试覆盖 Python 3.9 和 3.12，最新结果见顶部徽章。自动测试不代表真机播放兼容性。
+### 方式一：Windows 便携压缩包（推荐，免装 Python）
 
-1. 下载源码并解压到一个固定、可写的文件夹。Release 附件为源码包，需要安装 Python 和依赖。
+1. 在 GitHub Releases 下载 `AirPlayTray-win-x64.zip`（可配合 `SHA256SUMS.txt` 校验完整性）。
+2. 解压到固定、可写的文件夹，直接双击运行 `AirPlayTray.exe`。
+3. 若还没有 `config.json` 且局域网中只发现一台明确的 HomePod，程序会自动连接并保存配置到同级 `data\config.json`；否则右键任务栏图标，在「选择音箱」中挑选目标。
+
+### 方式二：从源码运行（Windows，64 位 Python 3.9–3.12）
+
+需要 Windows、64 位 Python 3.9–3.12，以及可在同一局域网发现的 AirPlay 音箱。本机源码与打包离线自检基于 Python 3.9.13 验证；GitHub Actions 分别在 Python 3.9 和 3.12 上执行自动化测试，并在 Python 3.12 上打包便携版。自动测试与 `--self-check` 不代表真机硬件和固件的播放兼容性验证。
+
+1. 下载源码并解压到一个固定、可写的文件夹。
 2. 确认终端中的 `python --version` 指向受支持的 Python，然后双击 `install.cmd`。安装需要联网下载依赖，文件放在项目自己的 `.venv` 中。
-3. 双击 `devices.cmd` 查看设备名称和标识。
-4. 用文本编辑器打开安装时生成的 `config.json`，把示例名称改成自己的音箱。
-5. 先双击 `start.cmd`，确认窗口中的连接结果和实际声音正常。
-6. 停止窗口版后，可双击 `background.vbs` 在后台运行。右下角的喇叭图标可能位于隐藏图标区域。
+3. 可用 `devices.cmd` 列出设备并编辑 `config.json`，也可直接双击 `background.vbs` 启动托盘，在右键菜单「选择音箱」中挑选设备。
+4. 如需排查命令行日志，可先用 `start.cmd` 观察连接输出。
 
 如果系统只提供 Python Launcher，可以在项目目录运行 `py -3.12 setup_env.py`，其中版本号替换为自己安装的受支持版本。项目不依赖开发者电脑的 Python 路径；更换项目位置或基础 Python 后，应重新创建 `.venv`。
 
@@ -52,17 +59,23 @@ HomePod 升级新固件后，TuneBlade 等老牌 AirPlay 1 推流工具出现了
 
 ## 日常控制
 
-托盘右键菜单提供“停止推流 / 开始推流”“查看日志”和“退出”。蓝色表示后台任务仍在运行，包括连接、等待音箱或静音待机；它不表示音箱已经实际播放声音。
+托盘右键菜单会根据系统语言显示简体中文或英文，提供「开始推流 / 停止推流」「选择音箱（含重新扫描）」「查看日志」和「退出」。
+托盘图标颜色对应真实运行阶段：
+- **灰色**：已停止或异常。
+- **青色闪烁**：连接中或重连中。
+- **青色常亮**：静音待机监听中。
+- **蓝色常亮**：已完成握手与会话建立，并真正开始发送音频帧。
+使用 `AirPlayTray.exe --self-check`（或 `tray_app.py --self-check`）可执行纯离线环境与可写 `data/` 目录自检，不会打开网络或音频设备。
 
-`stop.cmd` 会强制停止从当前项目完整脚本路径启动的 Python 进程，适合托盘无法退出时使用。它会先核对进程的命令行路径，不使用可能过期的 PID 直接结束进程。无法查询或停止进程时会报告失败。
+`stop.cmd` 会强制停止从当前项目完整脚本路径启动的 Python 进程，适合源码方式运行且托盘无法退出时使用。它会先核对进程的命令行路径，不使用可能过期的 PID 直接结束进程。无法查询或停止进程时会报告失败。
 
-可选开机自启：先确认后台运行正常，再在项目目录运行：
+可选开机自启：先确认托盘运行正常，再在程序目录或源码目录运行（`enable-startup.ps1` 存在 `AirPlayTray.exe` 时优先指向可执行文件，否则回退到 `background.vbs`）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\enable-startup.ps1
 ```
 
-它只会创建 `AirPlayTray-Public.lnk`。取消时运行 `shell:startup` 并删除该快捷方式。移动项目后需要重新设置。
+它只会创建 `AirPlayTray-Public.lnk`。取消时运行 `shell:startup` 并删除该快捷方式。移动程序位置后需要重新设置。
 
 ## 常用参数
 
@@ -108,8 +121,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\enable-startup.ps1
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 ```
 
-20 项回归测试直接验证音源、参数和配置逻辑；设备发现与停止进程等外部操作使用隔离样本，不会播放声音或结束真实进程。GitHub Actions 在推送、拉取请求和手动触发时运行 Windows 测试，并检查锁定依赖。测试通过不代表所有音箱和固件已完成兼容性验证。
+自动化回归测试直接验证音源缓冲、参数与配置校验、路径解析（`app_paths`）、HomePod 识别与首次启动自动选择规则、状态回调与代际防覆盖、串行切换音箱、离线 `--self-check`、许可证收集以及限定路径的停止脚本；外部设备发现与进程操作均使用隔离样本，不会播放声音或终止无关真实进程。GitHub Actions 在推送/PR 时执行测试，并在推送 `v*` 标签或手动触发时构建 Windows x64 便携包（`release.yml`）。测试通过不代表所有音箱和固件已完成真机兼容性验证。
 
 ## 依赖与许可证
 
-`requirements.txt` 列出直接依赖；`requirements-lock.txt` 固定完整安装依赖。安装脚本使用后者。源码以 MIT 许可证提供，第三方库遵循各自许可证，详见 [LICENSE](LICENSE) 和 [THIRD_PARTY.md](THIRD_PARTY.md)。源码包不捆绑 Python 或第三方运行环境。
+`requirements.txt` 列出直接依赖，`requirements-lock.txt` 固定完整运行依赖，`requirements-build.txt` 固定 PyInstaller 打包依赖。源码以 MIT 许可证提供，第三方库遵循各自许可证（含 LGPL 协议的 `pystray` 与 `zeroconf`）；便携压缩包内 `licenses/` 目录随附各固定运行依赖的原始许可证文件，详见 [LICENSE](LICENSE) 和 [THIRD_PARTY.md](THIRD_PARTY.md)。

@@ -3,7 +3,9 @@ runtime/
 __pycache__/
 *.py[cod]
 config.json
+config.json.bak
 config.*.local.json
+.config-*.tmp
 *.log
 *.pid
 *.lock
@@ -14,3 +16,6 @@ config.*.local.json
 Thumbs.db
 Desktop.ini
 AirPlayTray-GitHub发布指南.md
+data/
+build/
+dist/

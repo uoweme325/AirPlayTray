@@ -13,21 +13,28 @@ HomePod firmware updates have caused compatibility issues with legacy AirPlay 1 
 ## Highlights
 
 - **System audio capture:** capture the default Windows playback device without virtual audio cables.
-- **Tray controls:** start and stop streaming, view automatically rotated logs, and run without a console window.
+- **Tray controls & speaker picker:** right-click menu in Simplified Chinese or English (matching the Windows display language), dynamic **Select Speaker** submenu with **Rescan Speakers**, and automatically rotated logs.
+- **Real status-driven icon:** grey when stopped or errored, blinking teal while connecting or retrying, steady teal during idle monitoring, and steady blue only after the streaming pipeline actively reads audio frames.
+- **Zero-config tray launch:** starts without requiring a pre-created `config.json`; auto-selects only when no prior config exists and a single clearly identified HomePod is found on the LAN.
 - **Idle release:** release the speaker after 60 seconds of silence and reconnect when audio resumes. Discovery and handshaking take time, so the start of audio may be missed.
 - **Automatic retry:** retry when the speaker is offline at startup or streaming disconnects; waiting can be stopped.
-- **Local configuration:** select a speaker by name or identifier without committing private settings.
 
 ## Installation and first use
 
-You need Windows, 64-bit Python 3.9–3.12, and an AirPlay speaker discoverable on the same local network. The installer accepts these Python versions. Local installation was verified with Python 3.9.13. GitHub Actions runs Windows tests on Python 3.9 and 3.12; see the badge above for current results. Automated tests do not establish hardware playback compatibility.
+### Option A: Portable Windows x64 build (no Python required)
 
-1. Download the source and extract it to a fixed, writable directory. Release attachments contain source code and require Python and dependencies.
+1. Download `AirPlayTray-win-x64.zip` from GitHub Releases and verify `SHA256SUMS.txt` if desired.
+2. Extract it to a fixed, writable directory and launch `AirPlayTray.exe`.
+3. If no `config.json` exists yet and exactly one HomePod is discovered on your local network, AirPlayTray connects automatically and saves the selection to `data\config.json` next to `AirPlayTray.exe`. Otherwise, right-click the tray icon and choose **Select Speaker**.
+
+### Option B: Run from source (Windows, 64-bit Python 3.9–3.12)
+
+You need Windows, 64-bit Python 3.9–3.12, and an AirPlay speaker discoverable on the same local network. Local development was verified with Python 3.9.13; GitHub Actions runs Windows tests on Python 3.9 and 3.12 and builds the Windows x64 bundle on Python 3.12. Automated tests and `--self-check` do not establish live hardware playback compatibility across all receivers and firmwares.
+
+1. Download the source and extract it to a fixed, writable directory.
 2. Check that `python --version` selects a supported Python, then double-click `install.cmd`. Installation downloads dependencies into the project's own `.venv` directory.
-3. Run `devices.cmd` to list speaker names and identifiers.
-4. Open the generated `config.json` in a text editor and replace the example name with your speaker's name.
-5. Run `start.cmd` first and check both the connection messages and actual sound.
-6. Stop the console instance before running `background.vbs` for tray mode. The speaker icon may be in the notification area's hidden icons.
+3. Either edit `config.json` manually (or inspect speakers via `devices.cmd`), or run `background.vbs` directly and pick your speaker from the tray **Select Speaker** submenu.
+4. For CLI diagnostics, run `start.cmd` first and check both the connection messages and actual sound.
 
 If your system only provides the Python Launcher, run `py -3.12 setup_env.py` in the project directory, replacing the version with an installed supported version. The project does not depend on the developer's Python path. Recreate `.venv` after moving the project or replacing the base Python installation.
 
@@ -52,17 +59,23 @@ A command-line target overrides the target in the configuration file. If both `-
 
 ## Everyday controls
 
-The tray menu offers start/stop streaming, view logs, and quit. The current menu labels are Chinese: `开始推流` / `停止推流`, `查看日志`, and `退出`. A blue icon means the background task is alive, including connection attempts, waiting for a speaker, and idle monitoring. It does not confirm audible playback.
+The tray menu follows your Windows display language (Simplified Chinese or English) with **Start / Stop Streaming**, **Select Speaker** (including **Rescan Speakers**), **Open Log**, and **Quit**.
+Icon colors indicate the real streaming stage:
+- **Grey:** stopped or errored.
+- **Blinking teal:** connecting or retrying.
+- **Steady teal:** idle monitoring (silence detection).
+- **Steady blue:** actively sending audio frames (after handshake and setup succeed).
+Notice that `--self-check` (`AirPlayTray.exe --self-check` or `tray_app.py --self-check`) runs an offline self-check of runtime imports, `assets/app.ico`, and writable `data/` creation without opening audio devices or the network.
 
-Use `stop.cmd` if the tray application cannot quit. It force-stops Python processes whose command lines contain the complete script paths of this project. It verifies paths instead of terminating an arbitrary process from a stale PID file. It reports failures to inspect or stop processes.
+Use `stop.cmd` if a source-launched instance cannot quit. It force-stops Python processes whose command lines contain the complete script paths of this project. It verifies paths instead of terminating an arbitrary process from a stale PID file. It reports failures to inspect or stop processes.
 
-To enable optional startup at login, first verify tray mode, then run this in the project directory:
+To enable optional startup at login, first verify tray mode, then run this in the project or extracted release directory (`enable-startup.ps1` prefers `AirPlayTray.exe` if present, otherwise falls back to `background.vbs`):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\enable-startup.ps1
 ```
 
-This creates `AirPlayTray-Public.lnk`. To disable it, open `shell:startup` and delete that shortcut. Set it up again after moving the project.
+This creates `AirPlayTray-Public.lnk`. To disable it, open `shell:startup` and delete that shortcut. Set it up again after moving the folder.
 
 ## Common options
 
@@ -108,8 +121,8 @@ Run this from the project directory:
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 ```
 
-The 20 regression tests exercise the real audio-source, argument, and configuration logic. External device discovery and process termination use isolated samples; the tests neither play audio nor terminate real processes. GitHub Actions runs Windows tests and checks pinned dependencies on pushes, pull requests, and manual dispatch. Passing tests do not guarantee compatibility with every speaker or firmware version.
+The automated test suite exercises audio buffering, argument and settings validation, path resolution (`app_paths`), HomePod detection/auto-selection rules, real status transitions, generation guards, serial speaker switching, `--self-check`, license collection, and stop-script scoping using isolated fixtures (without playing real audio or terminating unrelated processes). GitHub Actions runs Windows tests on pushes/pull requests and builds portable x64 release bundles (`release.yml`) on `v*` tags or manual dispatch. Passing tests do not guarantee compatibility with every speaker or firmware version.
 
 ## Dependencies and license
 
-`requirements.txt` lists direct dependencies; `requirements-lock.txt` pins the complete installation set used by the installer. This project's source uses the MIT license. Third-party libraries retain their own licenses; see [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md). The source archive does not bundle Python or a third-party runtime.
+`requirements.txt` lists direct dependencies, `requirements-lock.txt` pins the runtime installation set, and `requirements-build.txt` pins PyInstaller for packaging. This project's source uses the MIT license. Third-party libraries retain their own licenses (including LGPL for `pystray` and `zeroconf`); portable release archives bundle dependency license texts under `licenses/`. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).

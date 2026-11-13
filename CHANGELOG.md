@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.2.0 — 便携发布与托盘选箱升级
+
+- 新增 `app_paths.py`，区分只读程序资源目录与可写运行目录（打包后默认将 `config.json`、`tray.log` 与锁文件放入可执行文件同级的 `data/` 目录）。
+- 托盘首次启动不再因缺少 `config.json` 报错退出：支持后台发现局域网音箱，并在右键菜单新增「选择音箱 / Select Speaker」及重扫项；仅当不存在历史配置且局域网只发现一台明确标识的 HomePod 时才自动选中并保存。
+- 托盘状态接入真实回调：停用或异常显示灰色，连接/重连青色闪烁，静音待机常亮青色，仅在真正发送首包音频后切为常亮蓝色；支持基于 Windows 显示语言的双语界面（中文/英文）与串行安全切箱。
+- 新增多尺寸图标 `assets/app.ico`、PyInstaller `onedir` 打包配置 `AirPlayTray.spec`、`--self-check` 离线自检入口、随包第三方许可证收集脚本 `build_tools/collect_licenses.py`，以及支持 `AirPlayTray.exe` 的开机自启脚本。
+- 新增 `.github/workflows/release.yml`，在 `v*` 标签或手动触发时构建 Windows x64 便携 ZIP 与 `SHA256SUMS.txt` 并生成 Draft Release（真机多固件兼容性仍待后续持续验证）。
+
 ## 0.1.0 — 公开预览版
 
 - 从私人原型分离，移除私人音箱标识、名称、内网地址及安装路径。

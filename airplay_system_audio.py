@@ -6,6 +6,7 @@
 import argparse
 import asyncio
 import contextlib
+import inspect
 import io
 import logging
 import math
@@ -17,19 +18,26 @@ import warnings
 import numpy as np
 import soundcard as sc
 import pyatv
+from pyatv.const import DeviceModel
 from pyatv.protocols.airplay.auth import extract_credentials
 from pyatv.protocols.airplay.utils import pct_to_dbfs
 from pyatv.protocols.raop import RaopStream, audio_source
 from pyatv.support.metadata import EMPTY_METADATA
+from app_paths import ensure_writable_data_dir, lock_path, pid_path
 from settings import DEFAULT_CONFIG, configure_device
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SAMPLE_RATE = 44100
 CHANNELS = 2
 BLOCK = 512
-LOCK_FILE = os.path.join(SCRIPT_DIR, "airplay-system-audio.lock")
-PID_FILE = os.path.join(SCRIPT_DIR, "airplay-system-audio.pid")
+LOCK_FILE = str(lock_path())
+PID_FILE = str(pid_path())
 RETRANSMIT_STATS = {"count": 0}
+HOMEPOD_MODELS = frozenset({
+    DeviceModel.HomePod,
+    DeviceModel.HomePodMini,
+    DeviceModel.HomePodGen2,
+})
 
 
 def apply_latency_tuning(latency_seconds):
@@ -93,6 +101,7 @@ def acquire_single_instance_lock():
         import msvcrt
     except ImportError:
         return True
+    ensure_writable_data_dir()
     handle = open(LOCK_FILE, "a+")
     try:
         msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
@@ -137,7 +146,8 @@ class LiveWavPipe(io.BufferedIOBase):
     官方那条路（stream_file）实测稳定，所以这里复用它的全部处理流程。
     """
 
-    def __init__(self, sample_rate, channels, sample_size, prebuffer=0.3, dump_path=None):
+    def __init__(self, sample_rate, channels, sample_size, prebuffer=0.3,
+                 dump_path=None):
         self.sample_rate = sample_rate
         self.channels = channels
         self.sample_size = sample_size
@@ -251,7 +261,7 @@ class LiveSystemAudio(audio_source.AudioSource):
     """实时 PCM 音源：抓音线程往里塞，pyatv 从里面取。"""
 
     def __init__(self, sample_rate, channels, sample_size, prebuffer=0.25,
-                 silence_threshold=-55.0, dump_path=None):
+                 silence_threshold=-55.0, dump_path=None, on_active=None):
         self._rate = sample_rate
         self._channels = channels
         self._size = sample_size
@@ -259,6 +269,8 @@ class LiveSystemAudio(audio_source.AudioSource):
         self._buf = bytearray()
         self._lock = threading.Condition()
         self._closed = False
+        self._on_active = on_active
+        self._active_notified = False
         pre_frames = max(int(prebuffer * sample_rate), 352 * 2)
         self._prebuffer_bytes = pre_frames * self._frame_bytes
         self._low_water_bytes = max(pre_frames // 2, 352) * self._frame_bytes
@@ -337,6 +349,7 @@ class LiveSystemAudio(audio_source.AudioSource):
 
     def _read(self, want: int) -> bytes:
         fb = self._frame_bytes
+        notify_cb = None
         with self._lock:
             if not self._started:
                 self._lock.wait_for(
@@ -368,6 +381,12 @@ class LiveSystemAudio(audio_source.AudioSource):
                 # 欠载时回充半个低水位缓冲，防止下一包连续欠载触发追帧日志
                 cushion_frames = max((self._low_water_bytes // fb) // 2, 1)
                 self._buf.extend(self._last_frame * cushion_frames)
+            if not self._closed and not self._active_notified and self._on_active is not None:
+                self._active_notified = True
+                notify_cb = self._on_active
+        if notify_cb is not None:
+            with contextlib.suppress(Exception):
+                notify_cb()
         return data
 
     async def get_metadata(self):
@@ -552,6 +571,46 @@ async def wait_for_sound(args, stop_event):
     return activity.is_set()
 
 
+def is_homepod_device(conf) -> bool:
+    """Return True only when pyatv metadata clearly identifies a HomePod."""
+    info = getattr(conf, "device_info", None)
+    if info is None:
+        return False
+    if getattr(info, "model", None) in HOMEPOD_MODELS:
+        return True
+    raw_model = getattr(info, "raw_model", None) or ""
+    return isinstance(raw_model, str) and raw_model.startswith("AudioAccessory")
+
+
+async def scan_devices(loop, timeout=3.0):
+    """Scan local AirPlay devices in deterministic name/identifier order."""
+    found = await pyatv.scan(loop, timeout=timeout)
+    return sorted(
+        found,
+        key=lambda dev: (
+            str(getattr(dev, "name", "")).lower(),
+            str(getattr(dev, "identifier", "")),
+        ),
+    )
+
+
+def _emit_status(status_callback, state, detail=""):
+    if status_callback is None:
+        return
+    with contextlib.suppress(Exception):
+        status_callback(state, detail)
+
+
+def _accepts_kwarg(func, kwarg_name: str) -> bool:
+    try:
+        params = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False
+    return kwarg_name in params or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
+
+
 async def find_device(loop, identifier=None, name=None):
     """按标识或名字找设备；传入 identifier 时可立即返回（~70ms），无需死等 3 秒。"""
     found = await pyatv.scan(loop, timeout=3, identifier=identifier if identifier else None)
@@ -575,11 +634,56 @@ async def find_device(loop, identifier=None, name=None):
     return found[0] if found else None
 
 
-async def stream_pipe_session(loop, conf, args, stop_event):
+def _attach_pipe_active_hook(atv, conf_name, status_callback):
+    """Emit ``streaming`` on the first frame read after ``client.send_audio`` begins."""
+    if status_callback is None:
+        return
+    interfaces = getattr(getattr(atv, "stream", None), "_interfaces", None)
+    if not isinstance(interfaces, dict):
+        return
+    raop = next((iface for iface in interfaces.values() if isinstance(iface, RaopStream)), None)
+    if raop is None:
+        return
+    manager = raop.playback_manager
+    orig_setup = manager.setup
+
+    async def setup_with_active(*setup_args, **setup_kwargs):
+        client, context = await orig_setup(*setup_args, **setup_kwargs)
+        orig_send_audio = client.send_audio
+
+        async def send_audio_with_active(audio_src, *send_args, **send_kwargs):
+            orig_readframes = audio_src.readframes
+            fired = False
+
+            async def watched_readframes(nframes):
+                nonlocal fired
+                data = await orig_readframes(nframes)
+                if not fired and data:
+                    fired = True
+                    _emit_status(status_callback, "streaming", conf_name)
+                return data
+
+            audio_src.readframes = watched_readframes
+            return await orig_send_audio(audio_src, *send_args, **send_kwargs)
+
+        client.send_audio = send_audio_with_active
+        return client, context
+
+    manager.setup = setup_with_active
+
+
+async def stream_pipe_session(loop, conf, args, stop_event, status_callback=None):
     """走 pyatv 官方 stream_file：把实时抓音伪装成一条永不结束的 WAV 流。"""
+    _emit_status(status_callback, "connecting", conf.name)
     atv = await pyatv.connect(conf, loop)
-    pipe = LiveWavPipe(SAMPLE_RATE, CHANNELS, 2, prebuffer=args.prebuffer,
-                       dump_path=args.dump or None)
+    _attach_pipe_active_hook(atv, conf.name, status_callback)
+    pipe = LiveWavPipe(
+        SAMPLE_RATE,
+        CHANNELS,
+        2,
+        prebuffer=args.prebuffer,
+        dump_path=args.dump or None,
+    )
     capture_stop = threading.Event()
     reason = "stopped"
     try:
@@ -620,15 +724,19 @@ async def stream_pipe_session(loop, conf, args, stop_event):
     return reason
 
 
-async def run_stream(loop, conf, args, stop_event, synthetic_beeps=False):
+async def run_stream(loop, conf, args, stop_event, synthetic_beeps=False, status_callback=None):
     """按 --engine 选择通道：pipe = pyatv 官方，direct = 自建实时通道。"""
     if args.engine == "pipe" and not synthetic_beeps:
-        return await stream_pipe_session(loop, conf, args, stop_event)
-    return await stream_session(loop, conf, args, stop_event, synthetic_beeps=synthetic_beeps)
+        return await stream_pipe_session(loop, conf, args, stop_event, status_callback=status_callback)
+    return await stream_session(
+        loop, conf, args, stop_event, synthetic_beeps=synthetic_beeps, status_callback=status_callback
+    )
 
 
-async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False):
+async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False, status_callback=None):
     """一次会话：连接 → 抓音 → 推送。返回 'stopped' 或 'idle'。"""
+    if not synthetic_beeps:
+        _emit_status(status_callback, "connecting", conf.name)
     atv = await pyatv.connect(conf, loop)
     source = None
     reason = "stopped"
@@ -665,6 +773,7 @@ async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False):
                     prebuffer=args.prebuffer,
                     silence_threshold=args.silence_threshold,
                     dump_path=args.dump or None,
+                    on_active=lambda: _emit_status(status_callback, "streaming", conf.name),
                 )
                 if args.dump:
                     print("[记录] 正在把推给音箱的原始音频写到 %s" % args.dump)
@@ -736,9 +845,11 @@ async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False):
     return reason
 
 
-async def wait_for_device(loop, args, stop_event):
+async def wait_for_device(loop, args, stop_event, status_callback=None):
     """启动时等音箱上线；停止操作也能取消正在进行的扫描。"""
     attempts = 0
+    target_label = args.name or args.id or ""
+    _emit_status(status_callback, "connecting", target_label)
     while not stop_event.is_set():
         scan = asyncio.create_task(find_device(loop, args.id, args.name))
         stopped = asyncio.create_task(stop_event.wait())
@@ -759,19 +870,27 @@ async def wait_for_device(loop, args, stop_event):
         if args.max_retries and attempts > args.max_retries:
             print("[错误] 没找到音箱，已达到重试上限。用 --list 检查设备。")
             return None
+        _emit_status(status_callback, "retrying", target_label)
         print("[等待音箱] 没找到音箱，%g 秒后重试…" % args.retry_delay)
         with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(stop_event.wait(), timeout=args.retry_delay)
     return None
 
 
-async def main_async(args, external_stop=None):
+async def main_async(args, external_stop=None, status_callback=None):
     loop = asyncio.get_event_loop()
     applied = apply_latency_tuning(args.latency)
     stop_event = external_stop if external_stop is not None else asyncio.Event()
-    conf = await wait_for_device(loop, args, stop_event)
+    if status_callback is not None and _accepts_kwarg(wait_for_device, "status_callback"):
+        conf = await wait_for_device(loop, args, stop_event, status_callback=status_callback)
+    else:
+        conf = await wait_for_device(loop, args, stop_event)
     if conf is None:
-        return 0 if stop_event.is_set() else 2
+        if stop_event.is_set():
+            _emit_status(status_callback, "stopped", "")
+            return 0
+        _emit_status(status_callback, "error", "not_found")
+        return 2
 
     print("[目标] %s (%s)" % (conf.name, conf.address))
     print("[延迟] 按 %.2f 秒推送（想更稳就调大 --latency，想更跟手就调小）" % applied)
@@ -789,7 +908,12 @@ async def main_async(args, external_stop=None):
     session_attempts = 0
     while not stop_event.is_set():
         try:
-            reason = await run_stream(loop, conf, args, stop_event)
+            if status_callback is not None and _accepts_kwarg(run_stream, "status_callback"):
+                reason = await run_stream(
+                    loop, conf, args, stop_event, status_callback=status_callback
+                )
+            else:
+                reason = await run_stream(loop, conf, args, stop_event)
             session_attempts = 0
         except KeyboardInterrupt:
             break
@@ -799,22 +923,30 @@ async def main_async(args, external_stop=None):
             session_attempts += 1
             if args.max_retries and session_attempts > args.max_retries:
                 print("[错误] 连续失败 %d 次，停止：%r" % (session_attempts, exc))
+                _emit_status(status_callback, "error", repr(exc))
                 return 3
+            _emit_status(status_callback, "retrying", conf.name)
             print("[重连] 会话中断（%r），%g 秒后重试…" % (exc, args.retry_delay))
-            await asyncio.sleep(args.retry_delay)
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(stop_event.wait(), timeout=args.retry_delay)
+            if stop_event.is_set():
+                break
             conf = await find_device(loop, args.id, args.name) or conf
             continue
 
         if reason != "idle":
             break
+        _emit_status(status_callback, "idle", conf.name)
         print("[待机] 安静了，先放开音箱")
         got_sound = await wait_for_sound(args, stop_event)
         if not got_sound or stop_event.is_set():
             break
+        _emit_status(status_callback, "connecting", conf.name)
         print("[唤醒] 检测到声音，接回音箱…")
         conf = await find_device(loop, args.id, args.name) or conf
 
     print("[退出] 已停止推流")
+    _emit_status(status_callback, "stopped", "")
     return 0
 
 
@@ -846,7 +978,7 @@ def write_beep_wav(path, beeps=3, on=0.45, off=0.45, freq=880.0, amplitude=0.3):
 
 async def selftest(loop, conf, args):
     """通过文件通道和实时通道分别播放测试音，用来判断哪条通道能把声音正确还原。"""
-    path = os.path.join(SCRIPT_DIR, "selftest-tone.wav")
+    path = os.path.join(str(ensure_writable_data_dir()), "selftest-tone.wav")
     write_tone_wav(path, seconds=1.2, freq=880.0, amplitude=0.3)
     stop_event = asyncio.Event()
 
@@ -921,13 +1053,14 @@ def cli():
         time.sleep(3)
         return 0
     with contextlib.suppress(OSError):
+        os.makedirs(os.path.dirname(os.path.abspath(PID_FILE)), exist_ok=True)
         with open(PID_FILE, "w", encoding="ascii") as handle:
             handle.write(str(os.getpid()))
 
     if args.debug:
         logging.basicConfig(
             level=logging.DEBUG,
-            filename=os.path.join(SCRIPT_DIR, "airplay-debug.log"),
+            filename=os.path.join(str(ensure_writable_data_dir()), "airplay-debug.log"),
             filemode="w",
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )

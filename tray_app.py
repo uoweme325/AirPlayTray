@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+from concurrent.futures import CancelledError
 import contextlib
 from dataclasses import dataclass
 import ctypes
@@ -395,7 +396,7 @@ class Controller:
             if self.volume_value is None:
                 return ui_text(self.lang, "volume_initial")
             key = "volume_current" if self.volume_applied else "volume_saved"
-            return ui_text(self.lang, key, value="%g" % self.volume_value)
+            return ui_text(self.lang, key, value=("%.1f" % self.volume_value).rstrip("0").rstrip("."))
 
     def request_volume(self, value=None, delta=None):
         """Keep network operations and config writes off the menu thread."""
@@ -415,7 +416,7 @@ class Controller:
                     with self._state_lock:
                         loop, control = self.loop, self.volume_control
                         if self.status == "stopping":
-                            raise RuntimeError("stream is stopping; try again after it stops")
+                            raise CancelledError
                         if loop is not None and control is not None:
                             self._volume_future = asyncio.run_coroutine_threadsafe(control.change(value), loop)
                             future = self._volume_future
@@ -430,10 +431,12 @@ class Controller:
                             self.volume_value = value
                             self.volume_applied = False
                     log("音量选择：%g%%" % value)
+            except CancelledError:
+                log("音量操作已取消：%g%%" % value)
             except Exception as exc:  # noqa: BLE001
                 log("音量操作失败：%r" % exc)
                 if self.on_volume_error is not None:
-                    self.on_volume_error(ui_text(self.lang, "volume_failed", error=str(exc)))
+                    self.on_volume_error(ui_text(self.lang, "volume_failed", error=str(exc) or type(exc).__name__))
             finally:
                 with self._state_lock:
                     self._volume_future = None
@@ -842,6 +845,8 @@ def main(argv=None) -> int:
         return 0
 
     data_ready = False
+    stream = None
+    previous_stdout, previous_stderr = sys.stdout, sys.stderr
     try:
         ensure_writable_data_dir()
         log_file = str(log_path())
@@ -870,6 +875,8 @@ def main(argv=None) -> int:
             ui_wakeup.set()
 
         controller = Controller(args, lang=lang, on_ui_change=on_ui_change)
+        if controller.status == "error":
+            log("配置异常：%s" % controller.detail)
 
         def send_toast(text: str) -> None:
             if not icon_holder:
@@ -1039,6 +1046,10 @@ def main(argv=None) -> int:
         else:
             notify("Error: %s\nSee tray.log for details." % exc, ui_text(lang, "app_name"))
         return 1
+    finally:
+        sys.stdout, sys.stderr = previous_stdout, previous_stderr
+        if stream is not None:
+            stream.close()
 
 
 if __name__ == "__main__":

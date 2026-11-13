@@ -1,6 +1,5 @@
 """本机设备配置；命令行指定的目标优先于配置文件。"""
 import json
-import math
 import os
 import shutil
 import tempfile
@@ -13,7 +12,7 @@ DEFAULT_CONFIG = str(default_config_path())
 
 def volume_percent(value):
     """Validate percentages once at config/CLI boundaries."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 100:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
         raise ValueError("音量必须是 0–100 的有限数字。")
     return float(value)
 
@@ -63,6 +62,10 @@ def configure_device(args, parser, allow_missing=False):
             try:
                 args.volume = volume_percent(settings["volume"])
             except ValueError as exc:
+                if allow_missing:
+                    args.config_error = str(exc)
+                    args.id = args.name = args.volume = None
+                    return args
                 parser.error(str(exc))
     for field in ("id", "name"):
         value = getattr(args, field)

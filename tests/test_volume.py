@@ -16,6 +16,23 @@ from settings import save_volume_selection
 
 
 class VolumeSettingsTests(unittest.TestCase):
+    def test_invalid_saved_volume_keeps_tray_alive_in_error_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / 'config.json'
+            for value in ('bad', -1, 101, True, float('nan'), float('inf'), 10**400):
+                with self.subTest(value=value):
+                    cfg.write_text(json.dumps({'device_id': 'TEST', 'volume': value}), encoding='utf-8')
+                    original = cfg.read_bytes()
+                    args = tray.build_args(['--config', str(cfg)], allow_missing=True)
+                    self.assertIsNotNone(args.config_error)
+                    self.assertIsNone(args.id)
+                    self.assertIsNone(args.name)
+                    self.assertIsNone(args.volume)
+                    controller = tray.Controller(args)
+                    self.assertEqual(controller.status, 'error')
+                    self.assertFalse(controller.start())
+                    self.assertEqual(cfg.read_bytes(), original)
+
     def test_volume_save_does_not_overwrite_corrupt_configuration(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'config.json'
@@ -44,8 +61,9 @@ class VolumeSettingsTests(unittest.TestCase):
                 with self.subTest(config=value), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                     tray.build_args(['--config', str(path)])
             for value in ('-1', '101', 'nan', 'inf'):
-                with self.subTest(cli=value), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-                    tray.build_args(['--name', 'TEST', '--volume', value])
+                for allow_missing in (False, True):
+                    with self.subTest(cli=value, tray=allow_missing), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                        tray.build_args(['--name', 'TEST', '--volume', value], allow_missing=allow_missing)
 
 
 class Client:
@@ -150,12 +168,13 @@ class LiveVolumeTests(unittest.IsolatedAsyncioTestCase):
 
 class ControllerVolumeTests(unittest.TestCase):
     def test_tray_startup_constructs_bilingual_volume_menu_without_audio(self):
-        for lang, label in (('zh', '音量'), ('en', 'Volume')):
-            with self.subTest(lang=lang), tempfile.TemporaryDirectory() as tmp:
+        for lang, label, invalid in (('zh', '音量', False), ('en', 'Volume', False), ('zh', '音量', True), ('en', 'Volume', True)):
+            with self.subTest(lang=lang, invalid=invalid), tempfile.TemporaryDirectory() as tmp:
                 folder = Path(tmp)
                 cfg = folder / 'config.json'
-                cfg.write_text('{"device_id":"TEST"}', encoding='utf-8')
+                cfg.write_text(json.dumps({'device_id': 'TEST', 'volume': 'bad' if invalid else None}), encoding='utf-8')
                 captured = []
+                streams = []
 
                 class TrayIcon:
                     HAS_NOTIFICATION = False
@@ -164,6 +183,7 @@ class ControllerVolumeTests(unittest.TestCase):
                         self.menu = menu
 
                     def run(self):
+                        streams.append(sys.stdout)
                         items = list(self.menu)
                         volume = items[2]
                         captured.append(volume.text)
@@ -173,17 +193,24 @@ class ControllerVolumeTests(unittest.TestCase):
                     def stop(self):
                         pass
 
-                with patch.object(tray, 'detect_ui_language', return_value=lang), patch.object(tray, 'acquire_tray_mutex', return_value=object()), patch.object(tray, 'ensure_writable_data_dir', return_value=folder), patch.object(tray, 'log_path', return_value=folder / 'tray.log'), patch.object(tray, 'pid_path', return_value=folder / 'pid'), patch.object(tray, 'log'), patch.object(tray.Controller, 'start', return_value=False), patch.object(tray.Controller, 'refresh_devices_async'), patch.object(tray.pystray, 'Icon', TrayIcon), patch.object(sys, 'stdout', io.StringIO()), patch.object(sys, 'stderr', io.StringIO()):
+                with patch.object(tray, 'detect_ui_language', return_value=lang), patch.object(tray, 'acquire_tray_mutex', return_value=object()), patch.object(tray, 'ensure_writable_data_dir', return_value=folder), patch.object(tray, 'log_path', return_value=folder / 'tray.log'), patch.object(tray, 'pid_path', return_value=folder / 'pid'), patch.object(tray, 'log'), patch.object(tray.Controller, 'start', return_value=False) as start, patch.object(tray.Controller, 'refresh_devices_async'), patch.object(tray.pystray, 'Icon', TrayIcon), patch.object(sys, 'stdout', io.StringIO()), patch.object(sys, 'stderr', io.StringIO()):
+                    original_stdout = sys.stdout
                     self.assertEqual(tray.main(['--config', str(cfg)]), 0)
+                    self.assertIs(sys.stdout, original_stdout)
+                    if invalid:
+                        start.assert_not_called()
                 self.assertEqual(captured[0], label)
                 self.assertIn('0%', captured)
                 self.assertIn('100%', captured)
+                self.assertTrue(streams[0]._handle.closed)
 
     def test_stop_cancels_inflight_volume_without_holding_session_open(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / 'config.json'
             cfg.write_text('{"device_id":"TEST"}', encoding='utf-8')
             controller = tray.Controller(tray.build_args(['--config', str(cfg)]))
+            errors = []
+            controller.on_volume_error = errors.append
             ready, changing, finished = threading.Event(), threading.Event(), threading.Event()
             client = Client()
 
@@ -202,7 +229,7 @@ class ControllerVolumeTests(unittest.TestCase):
                 return 0
 
             controller._on_ui_change = lambda menu=False: finished.set() if not controller.volume_busy else None
-            with patch.object(tool, 'main_async', network_session), patch.object(tool, 'acquire_single_instance_lock', return_value=MagicMock()), patch.object(tray, 'PID_PATH', str(Path(tmp) / 'pid')), patch.object(tray, 'log'):
+            with patch.object(tool, 'main_async', network_session), patch.object(tool, 'acquire_single_instance_lock', return_value=MagicMock()), patch.object(tray, 'PID_PATH', str(Path(tmp) / 'pid')), patch.object(tray, 'log') as logged:
                 self.assertTrue(controller.start())
                 try:
                     self.assertTrue(ready.wait(2))
@@ -214,6 +241,9 @@ class ControllerVolumeTests(unittest.TestCase):
                     self.assertFalse(controller.volume_busy)
                     self.assertFalse(controller.running)
                     self.assertNotIn('volume', json.loads(cfg.read_text()))
+                    self.assertEqual(errors, [])
+                    self.assertTrue(any('已取消' in str(call) for call in logged.call_args_list))
+                    self.assertFalse(any('音量操作失败' in str(call) for call in logged.call_args_list))
                 finally:
                     controller.stop(wait_timeout=2)
 
@@ -275,6 +305,28 @@ class ControllerVolumeTests(unittest.TestCase):
             controller = tray.Controller(tray.build_args(['--name', 'TEST', '--config', str(cfg), '--engine', 'pipe']))
             self.assertFalse(controller.request_volume(value=50))
             self.assertFalse(cfg.exists())
+
+    def test_empty_exception_message_includes_exception_type(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / 'config.json'
+            controller = tray.Controller(tray.build_args(['--name', 'TEST', '--config', str(cfg)]), lang='en')
+            errors, finished = [], threading.Event()
+            controller.on_volume_error = errors.append
+            controller._on_ui_change = lambda menu=False: finished.set() if not controller.volume_busy else None
+            with patch.object(tray, 'save_volume_selection', side_effect=RuntimeError()), patch.object(tray, 'log'):
+                controller.request_volume(value=50)
+                self.assertTrue(finished.wait(2))
+            self.assertEqual(len(errors), 1)
+            self.assertIn('RuntimeError', errors[0])
+
+    def test_fractional_initial_volume_is_rounded_only_for_display(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller = tray.Controller(tray.build_args(['--name', 'TEST', '--config', str(Path(tmp) / 'config.json')]), lang='en')
+            value = tool.dbfs_to_pct(-18.5)
+            controller.volume_value = value
+            controller.volume_applied = True
+            self.assertEqual(controller.volume_text(), 'Current: 38.3%')
+            self.assertEqual(controller.volume_value, value)
 
 
 if __name__ == '__main__':

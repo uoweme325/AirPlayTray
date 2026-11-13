@@ -59,6 +59,18 @@ A command-line target overrides the target in the configuration file. If both `-
 
 ## Everyday controls
 
+### Volume (v0.3)
+
+The **Volume** submenu offers 0%, 25%, 50%, 75%, and 100%, plus **Increase / Decrease 5%**. It adjusts this AirPlay session without changing Windows volume or restarting the connection. 0% mutes the session; select another level to restore sound.
+
+**Current** shows an applied level; **Saved (next connection)** means the selection will be applied when the speaker reconnects. Choices are saved to `config.json` as `volume` and restored after standby, reconnection, and app restart. `null` or an absent field retains the receiver's initial volume (or the existing fallback). `--volume` overrides the saved value. Volumes must be finite numbers from 0 to 100.
+
+Until the initial receiver volume is known, choose a preset before using the +/- controls. Volume controls are unavailable with the experimental `--engine pipe`. A failed network or save operation produces a notification and log entry; if only saving fails, the live volume may have changed but will not persist across restart.
+
+Audio capture continues to use the default Windows playback device; this version adds no capture-device picker or virtual-cable requirement.
+
+### Tray and startup
+
 The tray menu follows your Windows display language (Simplified Chinese or English) with **Start / Stop Streaming**, **Select Speaker** (including **Rescan Speakers**), **Open Log**, and **Quit**.
 Icon colors indicate the real streaming stage:
 - **Grey:** stopped or errored.

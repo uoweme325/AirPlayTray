@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+from concurrent.futures import CancelledError
 import contextlib
 from dataclasses import dataclass
 import ctypes
@@ -21,7 +22,7 @@ from PIL import Image, ImageDraw
 
 from app_paths import asset_path, data_dir, ensure_writable_data_dir, log_path, pid_path, resource_dir
 import airplay_system_audio as tool
-from settings import DEFAULT_CONFIG, configure_device, save_device_selection
+from settings import DEFAULT_CONFIG, configure_device, save_device_selection, save_volume_selection
 
 SCRIPT_DIR = str(resource_dir())
 LOG_PATH = str(log_path())
@@ -64,6 +65,15 @@ _UI_STRINGS = {
         "pick_speaker_tip": "请在托盘右键菜单“选择音箱”中挑选目标设备。",
         "config_error_tip": "配置文件格式有误，请从右键菜单“选择音箱”重新指定，或检查 config.json。",
         "startup_init": "正在初始化…",
+        "volume": "音量",
+        "volume_current": "当前：{value}%",
+        "volume_saved": "已保存：{value}%（下次连接应用）",
+        "volume_initial": "使用音箱初始音量",
+        "volume_up": "增加 5%",
+        "volume_down": "减少 5%",
+        "volume_busy": "正在调节音量…",
+        "volume_failed": "音量操作未完全成功：{error}",
+        "volume_pipe": "音量（pipe 通道暂不支持）",
     },
     "en": {
         "app_name": "AirPlayTray",
@@ -98,6 +108,15 @@ _UI_STRINGS = {
         "pick_speaker_tip": "Right-click the tray icon and choose Select Speaker.",
         "config_error_tip": "Invalid config.json; pick a speaker in Select Speaker or inspect the log.",
         "startup_init": "Initializing...",
+        "volume": "Volume",
+        "volume_current": "Current: {value}%",
+        "volume_saved": "Saved: {value}% (next connection)",
+        "volume_initial": "Use receiver initial volume",
+        "volume_up": "Increase 5%",
+        "volume_down": "Decrease 5%",
+        "volume_busy": "Adjusting volume...",
+        "volume_failed": "Volume operation did not fully succeed: {error}",
+        "volume_pipe": "Volume (unavailable with pipe)",
     },
 }
 
@@ -363,6 +382,69 @@ class Controller:
         self.scanning = False
         self.scan_error: Optional[str] = None
         self.devices: List[SpeakerInfo] = []
+        self.volume_value = args.volume
+        self.volume_applied = False
+        self.volume_busy = False
+        self.volume_control = None
+        self._volume_future = None
+        self.on_volume_error = None
+
+    def volume_text(self):
+        with self._state_lock:
+            if self.volume_busy:
+                return ui_text(self.lang, "volume_busy")
+            if self.volume_value is None:
+                return ui_text(self.lang, "volume_initial")
+            key = "volume_current" if self.volume_applied else "volume_saved"
+            return ui_text(self.lang, key, value=("%.1f" % self.volume_value).rstrip("0").rstrip("."))
+
+    def request_volume(self, value=None, delta=None):
+        """Keep network operations and config writes off the menu thread."""
+        with self._state_lock:
+            if self.args.engine != "direct" or self.volume_busy or self.switching or self.status == "stopping":
+                return False
+            if delta is not None:
+                if self.volume_value is None:
+                    return False
+                value = max(0, min(100, self.volume_value + delta))
+            self.volume_busy = True
+        self._notify_ui(menu=True)
+
+        def worker():
+            try:
+                with self._op_lock:
+                    with self._state_lock:
+                        loop, control = self.loop, self.volume_control
+                        if self.status == "stopping":
+                            raise CancelledError
+                        if loop is not None and control is not None:
+                            self._volume_future = asyncio.run_coroutine_threadsafe(control.change(value), loop)
+                            future = self._volume_future
+                        else:
+                            future = None
+                    if future is not None:
+                        future.result()
+                    else:
+                        save_volume_selection(self.args.config, value)
+                        self.args.volume = value
+                        with self._state_lock:
+                            self.volume_value = value
+                            self.volume_applied = False
+                    log("音量选择：%g%%" % value)
+            except CancelledError:
+                log("音量操作已取消：%g%%" % value)
+            except Exception as exc:  # noqa: BLE001
+                log("音量操作失败：%r" % exc)
+                if self.on_volume_error is not None:
+                    self.on_volume_error(ui_text(self.lang, "volume_failed", error=str(exc) or type(exc).__name__))
+            finally:
+                with self._state_lock:
+                    self._volume_future = None
+                    self.volume_busy = False
+                self._notify_ui(menu=True)
+
+        threading.Thread(target=worker, daemon=True, name="volume-change").start()
+        return True
 
     def _has_fatal_config_error(self) -> bool:
         err = getattr(self.args, "config_error", None)
@@ -473,9 +555,20 @@ class Controller:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 stop_event = asyncio.Event()
+                def volume_cb(value, applied):
+                    with self._state_lock:
+                        if gen != self._generation:
+                            return
+                        self.volume_value = value
+                        self.volume_applied = applied
+                    self._notify_ui(menu=True)
+
+                volume = tool.LiveVolume(self.args, volume_cb)
                 with self._state_lock:
                     self.loop = loop
                     self.stop_event = stop_event
+                    self.volume_control = volume
+                    self.args.volume_control = volume
                 result = 0
                 try:
                     log("--- 开始推流（engine=%s, target=%s）---" % (
@@ -496,6 +589,16 @@ class Controller:
                             self.detail = repr(exc)
                     log("推流异常：%r\n%s" % (exc, traceback.format_exc()))
                 finally:
+                    with self._state_lock:
+                        self.loop = None
+                        self.volume_control = None
+                    # Let already-submitted volume callbacks create their tasks before draining.
+                    loop.run_until_complete(asyncio.sleep(0))
+                    pending = asyncio.all_tasks(loop)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                     if self.lock is not None:
                         with contextlib.suppress(OSError):
                             self.lock.close()
@@ -514,6 +617,8 @@ class Controller:
                         if self._active_gen == gen:
                             self.loop = None
                             self.stop_event = None
+                            self.volume_control = None
+                            self.volume_applied = False
                             if self.thread is threading.current_thread():
                                 self.thread = None
                     log("--- 推流结束 ---")
@@ -539,7 +644,10 @@ class Controller:
             self._stop_requested_gen = self._active_gen
             self.status = "stopping"
             self.detail = ""
+            volume_future = self._volume_future
         self._notify_ui(menu=True)
+        if volume_future is not None:
+            volume_future.cancel()
         if loop is not None and stop_event is not None:
             with contextlib.suppress(RuntimeError):
                 loop.call_soon_threadsafe(stop_event.set)
@@ -566,10 +674,11 @@ class Controller:
                 log("切换音箱超时：旧推流会话未在 6 秒内结束")
                 return False
 
-            save_device_selection(self.args.config, dev.id, dev.name)
-            self.args.id = dev.id or None
-            self.args.name = dev.name or None
-            self.args.config_error = None
+            with self._op_lock:
+                save_device_selection(self.args.config, dev.id, dev.name)
+                self.args.id = dev.id or None
+                self.args.name = dev.name or None
+                self.args.config_error = None
             log("已选择并保存音箱：%s (%s)" % (dev.name, dev.id))
             return self.start()
         except Exception as exc:  # noqa: BLE001
@@ -736,6 +845,8 @@ def main(argv=None) -> int:
         return 0
 
     data_ready = False
+    stream = None
+    previous_stdout, previous_stderr = sys.stdout, sys.stderr
     try:
         ensure_writable_data_dir()
         log_file = str(log_path())
@@ -764,6 +875,8 @@ def main(argv=None) -> int:
             ui_wakeup.set()
 
         controller = Controller(args, lang=lang, on_ui_change=on_ui_change)
+        if controller.status == "error":
+            log("配置异常：%s" % controller.detail)
 
         def send_toast(text: str) -> None:
             if not icon_holder:
@@ -816,6 +929,25 @@ def main(argv=None) -> int:
             )
             return items
 
+        controller.on_volume_error = send_toast
+
+        def volume_menu_items():
+            items = [pystray.MenuItem(controller.volume_text(), None, enabled=False), pystray.Menu.SEPARATOR]
+
+            def level_item(value):
+                def handler(icon_obj, item):
+                    controller.request_volume(value=value)
+
+                return pystray.MenuItem("%d%%" % value, handler, checked=lambda item: controller.volume_value == value)
+
+            items.extend(level_item(level) for level in (0, 25, 50, 75, 100))
+            items.extend([
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(ui_text(lang, "volume_up"), lambda icon_obj, item: controller.request_volume(delta=5), enabled=lambda item: controller.volume_value is not None),
+                pystray.MenuItem(ui_text(lang, "volume_down"), lambda icon_obj, item: controller.request_volume(delta=-5), enabled=lambda item: controller.volume_value is not None),
+            ])
+            return items
+
         def on_toggle(icon_obj, item) -> None:
             if controller.switching or controller.status == "stopping":
                 return
@@ -853,6 +985,11 @@ def main(argv=None) -> int:
                 ui_text(lang, "select_speaker"),
                 pystray.Menu(speaker_menu_items),
                 enabled=lambda item: not controller.switching,
+            ),
+            pystray.MenuItem(
+                ui_text(lang, "volume" if args.engine == "direct" else "volume_pipe"),
+                pystray.Menu(volume_menu_items),
+                enabled=lambda item: args.engine == "direct" and not controller.volume_busy and not controller.switching and controller.status != "stopping",
             ),
             pystray.MenuItem(ui_text(lang, "open_log"), open_log_file),
             pystray.Menu.SEPARATOR,
@@ -909,6 +1046,10 @@ def main(argv=None) -> int:
         else:
             notify("Error: %s\nSee tray.log for details." % exc, ui_text(lang, "app_name"))
         return 1
+    finally:
+        sys.stdout, sys.stderr = previous_stdout, previous_stderr
+        if stream is not None:
+            stream.close()
 
 
 if __name__ == "__main__":

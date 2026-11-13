@@ -20,11 +20,11 @@ import soundcard as sc
 import pyatv
 from pyatv.const import DeviceModel
 from pyatv.protocols.airplay.auth import extract_credentials
-from pyatv.protocols.airplay.utils import pct_to_dbfs
+from pyatv.protocols.airplay.utils import pct_to_dbfs, dbfs_to_pct
 from pyatv.protocols.raop import RaopStream, audio_source
 from pyatv.support.metadata import EMPTY_METADATA
 from app_paths import ensure_writable_data_dir, lock_path, pid_path
-from settings import DEFAULT_CONFIG, configure_device
+from settings import DEFAULT_CONFIG, configure_device, save_volume_selection
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SAMPLE_RATE = 44100
@@ -733,6 +733,44 @@ async def run_stream(loop, conf, args, stop_event, synthetic_beeps=False, status
     )
 
 
+class LiveVolume:
+    """Serialize live SET_PARAMETER requests with session setup/teardown on its loop."""
+
+    def __init__(self, args, on_change):
+        self.args = args
+        self.on_change = on_change
+        self.client = None
+        self.lock = asyncio.Lock()
+
+    async def attach(self, client):
+        async with self.lock:
+            if self.args.volume is not None:
+                db = pct_to_dbfs(self.args.volume)
+            elif isinstance(client.info.get("initialVolume"), float):
+                db = client.info["initialVolume"]
+            else:
+                db = pct_to_dbfs(33.0)
+            await client.set_volume(round(db, 2))
+            self.client = client
+            self.on_change(self.args.volume if self.args.volume is not None else dbfs_to_pct(db), True)
+            print("[音量] 已把这一路的音量设为 %.2f dB" % db)
+
+    async def change(self, value):
+        async with self.lock:
+            if self.client is not None:
+                await self.client.set_volume(round(pct_to_dbfs(value), 2))
+                self.on_change(value, True)
+            save_volume_selection(self.args.config, value)
+            self.args.volume = value
+            if self.client is None:
+                self.on_change(value, False)
+
+    async def detach(self):
+        async with self.lock:
+            self.client = None
+            self.on_change(self.args.volume, False)
+
+
 async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False, status_callback=None):
     """一次会话：连接 → 抓音 → 推送。返回 'stopped' 或 'idle'。"""
     if not synthetic_beeps:
@@ -741,6 +779,7 @@ async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False, st
     source = None
     reason = "stopped"
     capture_stop = threading.Event()
+    volume = getattr(args, "volume_control", None)
     try:
         raop = next(
             iface
@@ -782,15 +821,18 @@ async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False, st
 
             # AirPlay 2 的音频流音量必须由发送端明确设置：不设，音箱就当静音处理。
             # 官方文件通道也是这么做的（先发 SET_PARAMETER volume，再 RECORD）。
-            if args.volume is not None:
+            if volume is not None:
+                await volume.attach(client)
+            elif args.volume is not None:
                 target_db = pct_to_dbfs(args.volume)
             elif isinstance(client.info.get("initialVolume"), float):
                 target_db = client.info["initialVolume"]
             else:
                 target_db = pct_to_dbfs(33.0)
-            target_db = round(target_db, 2)
-            await client.set_volume(target_db)
-            print("[音量] 已把这一路的音量设为 %.2f dB" % target_db)
+            if volume is None:
+                target_db = round(target_db, 2)
+                await client.set_volume(target_db)
+                print("[音量] 已把这一路的音量设为 %.2f dB" % target_db)
 
             if synthetic_beeps:
                 print("[开始] 自检音：%d 声（不经过抓音）" % int(synthetic_beeps))
@@ -835,6 +877,8 @@ async def stream_session(loop, conf, args, stop_event, synthetic_beeps=False, st
                 raise RuntimeError("音频推流通道意外中断")
         finally:
             capture_stop.set()
+            if volume is not None:
+                await volume.detach()
             with contextlib.suppress(Exception):
                 await manager.teardown()
     finally:

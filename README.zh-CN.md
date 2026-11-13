@@ -1,14 +1,14 @@
-# AirPlayTray
+# AirPlayTray — Windows 电脑声音推流到 HomePod / AirPlay 2 音箱（TuneBlade 替代方案）
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 [![Tests](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml)
 
-替代在 HomePod OS 27 上失效的 TuneBlade，将 Windows 默认播放设备的系统声音实时推送到 HomePod / AirPlay 2 音箱的托盘工具。
+开源免费的 **TuneBlade 替代工具**，解决 HomePod / HomePod mini 升级新版固件（如 HomePod OS 27）后连不上、断流或无声的问题。将 **Windows 10 / 11 电脑系统声音**实时投送到 **HomePod、HomePod mini 与 AirPlay 2 音箱**，无需虚拟声卡；使用 Release 便携包即可免装 Python 开箱即用。
 
 **实验性公开预览版，非 Apple 官方项目。**
 
-HomePod 升级新固件后，TuneBlade 等老牌 AirPlay 1 推流工具出现了连接失败、无法播放等兼容性问题。本项目为此采用基于 pyatv 的 AirPlay 2 音频通道与 Windows WASAPI 环回采集。默认向接收端请求 0.3 秒延迟；实际端到端延迟取决于设备和网络。
+HomePod 升级新固件后，TuneBlade 等老牌 AirPlay 1 推流工具出现了连接失败、无法播放等兼容性问题。本项目为此采用基于 pyatv 的 AirPlay 2 音频通道与 Windows WASAPI 环回采集，在任务栏托盘中完成切箱与推流控制。默认向接收端请求 0.3 秒延迟；实际端到端延迟取决于设备和网络。
 
 ## 核心特性
 

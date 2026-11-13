@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirPlayTray — Stream Windows PC Audio to HomePod / AirPlay 2 (TuneBlade Alternative)</title>
+  <meta name="description" content="Open-source TuneBlade alternative for Windows 10 and 11. Stream system audio to HomePod, HomePod mini, and AirPlay 2 speakers from the Windows system tray via WASAPI loopback and pyatv, no virtual audio cable required.">
+  <meta name="keywords" content="AirPlayTray, TuneBlade alternative, Windows stream audio to HomePod, HomePod OS 27, AirPlay 2 Windows sender, Windows WASAPI loopback, HomePod mini PC speaker, Windows 电脑声音 HomePod">
+  <link rel="canonical" href="https://uoweme325.github.io/AirPlayTray/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="AirPlayTray — Stream Windows PC Audio to HomePod / AirPlay 2">
+  <meta property="og:description" content="Open-source TuneBlade alternative for HomePod (AirPlay 2). Stream Windows PC system audio from a lightweight system tray controller.">
+  <meta property="og:url" content="https://uoweme325.github.io/AirPlayTray/">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AirPlayTray",
+    "operatingSystem": "Windows 10, Windows 11",
+    "applicationCategory": "MultimediaApplication",
+    "license": "https://github.com/uoweme325/AirPlayTray/blob/main/LICENSE",
+    "url": "https://uoweme325.github.io/AirPlayTray/",
+    "codeRepository": "https://github.com/uoweme325/AirPlayTray",
+    "downloadUrl": "https://github.com/uoweme325/AirPlayTray/releases/latest",
+    "description": "Open-source TuneBlade alternative for streaming Windows system audio to HomePod and AirPlay 2 speakers with system tray controls."
+  }
+  </script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #0284c7;
+      --accent-hover: #0369a1;
+      --border: #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-hover: #7dd3fc;
+        --border: #334155;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 40px 20px 64px;
+    }
+    header {
+      margin-bottom: 32px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      background: rgba(2, 132, 199, 0.12);
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 2rem;
+      line-height: 1.25;
+      margin: 0 0 12px;
+    }
+    .lead {
+      font-size: 1.08rem;
+      color: var(--muted);
+      margin: 0 0 24px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 18px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--card);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 28px 0;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h2, .card h3 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+    }
+    .card p, .card li {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .card ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .card li + li { margin-top: 6px; }
+    footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <span class="badge">Open Source · MIT License · Windows 10 / 11</span>
+      <h1>AirPlayTray — Stream Windows PC Audio to HomePod / AirPlay 2</h1>
+      <p class="lead">
+        An open-source <strong>TuneBlade alternative</strong> when legacy AirPlay 1 streaming breaks on
+        <strong>HomePod OS 27</strong> and newer HomePod firmware updates. Capture the default Windows playback device
+        via WASAPI loopback and stream to HomePod, HomePod mini, or AirPlay 2 speakers from the system tray.
+      </p>
+      <p class="lead">
+        开源免费的 <strong>TuneBlade 替代方案</strong>：解决 HomePod 升级新版系统后无法推流的问题，支持将 Windows 10 / 11
+        电脑系统声音实时推送至 HomePod / HomePod mini / AirPlay 2 音箱，无需虚拟声卡，提供免装 Python 便携版。
+      </p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/uoweme325/AirPlayTray/releases/latest">Download Portable ZIP (GitHub Releases)</a>
+        <a class="btn" href="https://github.com/uoweme325/AirPlayTray">View Source on GitHub</a>
+        <a class="btn" href="https://github.com/uoweme325/AirPlayTray/blob/main/README.zh-CN.md">简体中文文档</a>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Why AirPlayTray</h2>
+        <ul>
+          <li>Uses pyatv's AirPlay 2 audio channel instead of legacy AirPlay 1 protocols.</li>
+          <li>Captures Windows system sound directly through WASAPI loopback without virtual cables.</li>
+          <li>Zero-config first run when a single HomePod is discovered, or switch speakers right from the tray menu.</li>
+          <li>Releases idle speakers after 60s of silence and automatically reconnects when audio resumes.</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h2>核心特性</h2>
+        <ul>
+          <li>采用 pyatv AirPlay 2 音频通道，解决传统工具在新版 HomePod 上的兼容断流问题。</li>
+          <li>通过 Windows WASAPI 环回采集整机声音，免装虚拟声卡。</li>
+          <li>支持便携压缩包免 Python 启动、中英文自适应右键菜单、三色状态图标与静音自动释放。</li>
+          <li>适合作为 TuneBlade 替代工具用于日常电脑看视频、听音乐推流到 HomePod。</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Quick Start / 快速上手</h2>
+      <ul>
+        <li>Download <code>AirPlayTray-win-x64.zip</code> from <a href="https://github.com/uoweme325/AirPlayTray/releases/latest">GitHub Releases</a> (no Python required), extract to a writable folder, and run <code>AirPlayTray.exe</code>.</li>
+        <li>Or run from source on 64-bit Python 3.9–3.12 following <a href="https://github.com/uoweme325/AirPlayTray/blob/main/README.md">README.md</a> / <a href="https://github.com/uoweme325/AirPlayTray/blob/main/README.zh-CN.md">README.zh-CN.md</a>.</li>
+      </ul>
+    </section>
+
+    <section class="card" style="margin-top: 16px;">
+      <h3>More Windows Open-Source Tools by uoweme325</h3>
+      <p>
+        Also check out <a href="https://github.com/uoweme325/AgentPet">AgentPet</a> — a Windows desktop pet that displays live
+        status, Codex quotas, and DeepSeek Harness balances for AI coding workflows (Antigravity, Codex, and DeepSeek Harness).
+      </p>
+    </section>
+
+    <footer>
+      <p>
+        Experimental public preview. Not affiliated with Apple. Source hosted on
+        <a href="https://github.com/uoweme325/AirPlayTray">github.com/uoweme325/AirPlayTray</a> ·
+        <a href="https://github.com/uoweme325">github.com/uoweme325</a>
+      </p>
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,14 +1,14 @@
-# AirPlayTray
+# AirPlayTray — Stream Windows PC Audio to HomePod / AirPlay 2 (TuneBlade Alternative)
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 [![Tests](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/uoweme325/AirPlayTray/actions/workflows/test.yml)
 
-An alternative to TuneBlade when it stops working on HomePod OS 27. Stream audio from the Windows default playback device to HomePod / AirPlay 2 speakers, with a lightweight system tray controller.
+An open-source **TuneBlade alternative** for **Windows 10 / 11** when legacy AirPlay 1 streaming fails on **HomePod OS 27** and recent HomePod firmware updates. Stream **Windows system audio** from your default playback device to **HomePod, HomePod mini, and AirPlay 2 speakers** with a lightweight system tray controller — no virtual audio cables or Python install required with the portable ZIP.
 
 **Experimental public preview. Not affiliated with Apple.**
 
-HomePod firmware updates have caused compatibility issues with legacy AirPlay 1 streaming tools such as TuneBlade, including connection failures and an inability to play audio. AirPlayTray uses pyatv's AirPlay 2 audio channel and Windows WASAPI loopback capture. The default requested receiver latency is 0.3 seconds; actual end-to-end latency depends on the device and network.
+HomePod firmware updates have caused compatibility issues with legacy AirPlay 1 streaming tools such as TuneBlade, including connection failures and an inability to play audio. AirPlayTray uses pyatv's AirPlay 2 audio channel and Windows WASAPI loopback capture to act as a lightweight Windows AirPlay 2 audio sender. The default requested receiver latency is 0.3 seconds; actual end-to-end latency depends on the device and network.
 
 ## Highlights
 

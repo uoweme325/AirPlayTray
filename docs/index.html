@@ -16,12 +16,13 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "AirPlayTray",
+    "softwareVersion": "0.3.0",
     "operatingSystem": "Windows 10, Windows 11",
     "applicationCategory": "MultimediaApplication",
     "license": "https://github.com/uoweme325/AirPlayTray/blob/main/LICENSE",
     "url": "https://uoweme325.github.io/AirPlayTray/",
     "codeRepository": "https://github.com/uoweme325/AirPlayTray",
-    "downloadUrl": "https://github.com/uoweme325/AirPlayTray/releases/latest",
+    "downloadUrl": "https://github.com/uoweme325/AirPlayTray/releases/download/v0.3.0/AirPlayTray-win-x64.zip",
     "description": "Open-source TuneBlade alternative for streaming Windows system audio to HomePod and AirPlay 2 speakers with system tray controls."
   }
   </script>
@@ -154,7 +155,8 @@
         电脑系统声音实时推送至 HomePod / HomePod mini / AirPlay 2 音箱，无需虚拟声卡，提供免装 Python 便携版。
       </p>
       <div class="actions">
-        <a class="btn btn-primary" href="https://github.com/uoweme325/AirPlayTray/releases/latest">Download Portable ZIP (GitHub Releases)</a>
+        <a class="btn btn-primary" href="https://github.com/uoweme325/AirPlayTray/releases/download/v0.3.0/AirPlayTray-win-x64.zip">Download v0.3.0 Portable ZIP / 下载便携包</a>
+        <a class="btn" href="https://github.com/uoweme325/AirPlayTray/releases/tag/v0.3.0">v0.3.0 Release Notes / 更新说明</a>
         <a class="btn" href="https://github.com/uoweme325/AirPlayTray">View Source on GitHub</a>
         <a class="btn" href="https://github.com/uoweme325/AirPlayTray/blob/main/README.zh-CN.md">简体中文文档</a>
       </div>
@@ -167,6 +169,7 @@
           <li>Uses pyatv's AirPlay 2 audio channel instead of legacy AirPlay 1 protocols.</li>
           <li>Captures Windows system sound directly through WASAPI loopback without virtual cables.</li>
           <li>Zero-config first run when a single HomePod is discovered, or switch speakers right from the tray menu.</li>
+          <li>Adjust live AirPlay volume from the tray with presets and +/-5% controls while keeping the current session connected.</li>
           <li>Releases idle speakers after 60s of silence and automatically reconnects when audio resumes.</li>
         </ul>
       </article>
@@ -177,6 +180,7 @@
           <li>采用 pyatv AirPlay 2 音频通道，解决传统工具在新版 HomePod 上的兼容断流问题。</li>
           <li>通过 Windows WASAPI 环回采集整机声音，免装虚拟声卡。</li>
           <li>支持便携压缩包免 Python 启动、中英文自适应右键菜单、三色状态图标与静音自动释放。</li>
+          <li>v0.3 支持托盘音量档位、加减 5% 和静音恢复，直接调节当前 AirPlay 会话。</li>
           <li>适合作为 TuneBlade 替代工具用于日常电脑看视频、听音乐推流到 HomePod。</li>
         </ul>
       </article>
@@ -185,9 +189,17 @@
     <section class="card">
       <h2>Quick Start / 快速上手</h2>
       <ul>
-        <li>Download <code>AirPlayTray-win-x64.zip</code> from <a href="https://github.com/uoweme325/AirPlayTray/releases/latest">GitHub Releases</a> (no Python required), extract to a writable folder, and run <code>AirPlayTray.exe</code>.</li>
+        <li>Download <code>AirPlayTray-win-x64.zip</code> from <a href="https://github.com/uoweme325/AirPlayTray/releases/tag/v0.3.0">v0.3.0 Releases</a> (no Python required), extract to a writable folder, and run <code>AirPlayTray.exe</code>.</li>
+        <li>To upgrade, exit the old instance and copy its <code>data/config.json</code> into the new package's <code>data</code> folder. 升级时先退出旧实例，将公开版旧包的配置复制到新包，以保留音箱和音量选择。</li>
         <li>Or run from source on 64-bit Python 3.9–3.12 following <a href="https://github.com/uoweme325/AirPlayTray/blob/main/README.md">README.md</a> / <a href="https://github.com/uoweme325/AirPlayTray/blob/main/README.zh-CN.md">README.zh-CN.md</a>.</li>
       </ul>
+    </section>
+
+    <section class="card" style="margin-top: 16px;">
+      <h2>v0.3 validation / 验证范围</h2>
+      <p>54 automated tests pass on Windows Python 3.9 and 3.12. Live HomePod volume adjustment, mute, and restored audio were confirmed. The full idle-volume wakeup sequence and app-restart restoration still need hardware verification. No separate Python-free Windows machine or second speaker was available.</p>
+      <p>54 项自动测试通过，已实测 HomePod 调音、静音与恢复声音。待机修改音量后的完整唤醒流程和程序重启恢复仍待真机补测。无独立的无 Python 电脑或第二台音箱可测。音量菜单支持默认 direct 通道，pipe 实验通道暂不可用。</p>
+      <p>See the <a href="https://github.com/uoweme325/AirPlayTray/releases/tag/v0.3.0">release notes / 更新说明</a> for connection-handshake and short-sound limitations.</p>
     </section>
 
     <section class="card" style="margin-top: 16px;">

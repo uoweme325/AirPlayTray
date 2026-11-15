@@ -1,6 +1,8 @@
 # AirPlayTray — Stream Windows PC Audio to HomePod / AirPlay 2 (TuneBlade Alternative)
 
-[English](README.md) | [简体中文](README.zh-CN.md)> 中文用户：[简体中文说明](README.zh-CN.md) — 开源免费的 Windows 系统托盘工具，免虚拟声卡将电脑声音无线投送到 HomePod / HomePod mini / AirPlay 2 音箱（TuneBlade 开源替代方案）。
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+> 中文用户：[简体中文说明](README.zh-CN.md) — 开源免费的 Windows 系统托盘工具，免虚拟声卡将电脑声音无线投送到 HomePod / HomePod mini / AirPlay 2 音箱（TuneBlade 开源替代方案）。
 
 
 

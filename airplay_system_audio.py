@@ -91,8 +91,19 @@ def apply_latency_tuning(latency_seconds):
 
 def loopback_device():
     """默认播放设备对应的环回输入。"""
-    speaker = sc.default_speaker()
-    return sc.get_microphone(id=str(speaker.name), include_loopback=True)
+    speaker_id = getattr(sc.default_speaker(), "id", None)
+    if not speaker_id:
+        raise RuntimeError("找不到 Windows 默认播放设备，已停止采集。")
+
+    # SoundCard's name lookup can also return a physical microphone. Match only
+    # the render endpoint's WASAPI ID and require a verified loopback device.
+    matches = [
+        device for device in sc.all_microphones(include_loopback=True)
+        if device.isloopback is True and device.id == speaker_id
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("无法确认 Windows 默认播放设备的环回输入，已停止采集。")
+    return matches[0]
 
 
 def acquire_single_instance_lock():
